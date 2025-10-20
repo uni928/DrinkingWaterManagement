@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>飲料水トラッカー</title>
+<style>
+  :root{
+    --bg:#f7f7fb; --card:#fff; --text:#222; --muted:#666; --accent:#2563eb; --accent-weak:#dbeafe; --danger:#b91c1c; --ok:#16a34a;
+    --grid: 44px; --radius:16px;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",sans-serif;}
+  header{position:sticky;top:0;background:linear-gradient(#fff, #fff8);backdrop-filter:saturate(180%) blur(6px);z-index:5;border-bottom:1px solid #eee}
+  .container{max-width:980px;margin:0 auto;padding:16px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .card{background:var(--card);border:1px solid #eee;border-radius:var(--radius);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+  .calendar{padding:16px}
+  .calendar .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .calendar .nav h2{margin:0;font-size:20px}
+  .calendar .nav .btns{display:flex;gap:8px}
+  button{appearance:none;border:1px solid #ddd;background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+  button:hover{border-color:#ccc}
+  .iconbtn{width:36px;height:36px;display:grid;place-items:center}
+  .today-badge{font-size:12px;background:var(--accent-weak);color:var(--accent);padding:2px 6px;border-radius:999px;margin-left:8px}
+
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .dow{font-size:12px;color:#888;text-align:center}
+  .cell{position:relative;height:var(--grid);background:#fff;border:1px solid #eee;border-radius:10px;padding:4px 6px;display:flex;flex-direction:column;justify-content:space-between}
+  .cell .mark-dot{position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:rgba(185,28,28,.6);display:none}
+  .cell.marked .mark-dot{display:block}
+  .cell.dim{opacity:.45}
+  .cell .date{font-size:12px;color:#444}
+  .cell .ml{font-size:12px;color:#2563eb;font-weight:600}
+  .cell.selected{outline:2px solid var(--accent);outline-offset:2px}
+  .cell.today{border-color:#cfe1ff}
+
+  .summary{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;color:#444}
+  .pill{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:13px}
+  .pill strong{color:#111}
+
+  .actions{margin-top:12px;padding:16px}
+  .amounts{display:flex;flex-wrap:wrap;gap:8px}
+  .amounts button{min-width:72px}
+  .hint{font-size:13px;color:#555;margin-top:8px}
+
+  .entries{padding:16px}
+  .entries h3{margin:0 0 8px 0;font-size:16px}
+  .entry{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:8px;border:1px solid #eee;border-radius:12px}
+  .entry + .entry{margin-top:8px}
+  .entry input[type="number"]{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:8px}
+  .tag{font-size:12px;color:#555}
+  .empty{color:#777;font-size:14px}
+  .danger{border-color:#fca5a5;background:#fff}
+  .danger:hover{border-color:#ef4444}
+
+  footer{color:#777;font-size:12px;text-align:center;margin:24px 0}
+</style>
+</head>
+<body>
+  <header>
+    <div class="container row" style="justify-content:space-between">
+      <div class="row">
+        <h1 style="font-size:18px;margin:0">飲料水トラッカー</h1>
+        <span class="today-badge" id="todayBadge"></span>
+      </div>
+      <div class="row">
+        <span class="pill">中央値(直近記録最大30日): <strong id="median30">-</strong> ml</span>
+        <span class="pill">本日合計: <strong id="todayTotal">0</strong> ml</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="margin-top:12px">
+    <section class="card calendar">
+      <div class="nav">
+        <div class="btns">
+          <button class="iconbtn" id="prevMonth" title="前の月">◀</button>
+        </div>
+        <h2 id="monthLabel">2025年10月</h2>
+        <div class="btns">
+          <button id="goToday">今日</button>
+          <button class="iconbtn" id="nextMonth" title="次の月">▶</button>
+        </div>
+      </div>
+      <div class="grid" id="dow">
+        <div class="dow">日</div><div class="dow">月</div><div class="dow">火</div><div class="dow">水</div><div class="dow">木</div><div class="dow">金</div><div class="dow">土</div>
+      </div>
+      <div class="grid" id="calendarGrid" aria-live="polite"></div>
+      <div class="summary">
+        <span class="pill">選択日: <strong id="selectedDateLabel">-</strong></span>
+        <span class="pill">選択日の合計: <strong id="selectedTotal">0</strong> ml</span>
+      </div>
+    </section>
+
+    <section class="card actions">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div>
+          <h3 style="margin:0 0 8px 0;font-size:16px">ワンタップ追加</h3>
+          <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px 0"><input id="markCheckbox" type="checkbox"/> チェックを付ける（お通じのチェック等にご利用下さい）</label>
+          <div class="amounts" id="amountButtons"></div>
+          <p class="hint">おすすめ：<strong>「飲み始めた時」「コップに入れた時」に入力</strong>しておくと、記録漏れを防げます。</p>
+        </div>
+        <div class="row" style="gap:8px">
+          <button id="addCustom">カスタム追加</button>
+          <input id="customAmount" type="number" min="1" step="50" placeholder="ml" style="width:120px;padding:8px;border:1px solid #ddd;border-radius:10px" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card entries">
+      <h3>選択日の記録</h3>
+      <div id="entryList" class="list"></div>
+      <p class="empty" id="emptyMsg" hidden>記録はまだありません。</p>
+    </section>
+  </main>
+
+  <footer>IndexedDB 保存 / オフライン対応・単一HTML</footer>
+
+<script>
+(function(){
+  // ===== Utilities =====
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const fmtDate = d => { const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`; }; // YYYY-MM-DD (local)
+  const today = () => new Date();
+  const sameDay = (a,b) => a.getFullYear()==b.getFullYear() && a.getMonth()==b.getMonth() && a.getDate()==b.getDate();
+
+  // ===== IndexedDB =====
+  const DB_NAME = 'water-tracker-db';
+  const DB_VER = 2; // bump: add marks store
+  const STORE = 'drinks';
+  const STORE_MARKS = 'marks';
+  let db;
+
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains(STORE)){
+          const os = db.createObjectStore(STORE, { keyPath:'id', autoIncrement:true });
+          os.createIndex('by_date','date',{unique:false});
+          os.createIndex('by_timestamp','timestamp',{unique:false});
+        }
+        if(!db.objectStoreNames.contains(STORE_MARKS)){
+          const ms = db.createObjectStore(STORE_MARKS, { keyPath:'date' });
+          ms.createIndex('by_date','date', {unique:true});
+        }
+      };
+      req.onsuccess = ()=>{ db=req.result; resolve(db); };
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  // drinks CRUD
+  function addEntry(dateStr, amount){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).add({date:dateStr, amount:Number(amount), timestamp:Date.now()});
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function updateEntry(id, patch){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      const os = tx.objectStore(STORE);
+      const get = os.get(id);
+      get.onsuccess = ()=>{
+        const v = get.result; if(!v){reject(new Error('not found'));return;}
+        Object.assign(v, patch);
+        os.put(v);
+      };
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function deleteEntry(id){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function listByDate(dateStr){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const idx = tx.objectStore(STORE).index('by_date');
+      const range = IDBKeyRange.only(dateStr);
+      const out = [];
+      idx.openCursor(range).onsuccess = (e)=>{
+        const cur = e.target.result; if(cur){ out.push(cur.value); cur.continue(); } else resolve(out);
+      };
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function totalsBetween(startDateStr, endDateStr){ // inclusive
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const idx = tx.objectStore(STORE).index('by_date');
+      const range = IDBKeyRange.bound(startDateStr, endDateStr);
+      const map = new Map();
+      idx.openCursor(range).onsuccess = (e)=>{
+        const cur = e.target.result; if(cur){
+          const {date, amount} = cur.value;
+          map.set(date, (map.get(date)||0) + amount);
+          cur.continue();
+        } else resolve(map);
+      };
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  // median helpers
+  function allTotalsByDate(){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const idx = tx.objectStore(STORE).index('by_date');
+      const map = new Map();
+      idx.openCursor().onsuccess = (e)=>{
+        const cur = e.target.result; if(cur){
+          const {date, amount} = cur.value;
+          map.set(date, (map.get(date)||0) + amount);
+          cur.continue();
+        } else resolve(map);
+      };
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+
+  // marks CRUD
+  function setMark(dateStr, checked){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_MARKS,'readwrite');
+      const os = tx.objectStore(STORE_MARKS);
+      if(checked){ os.put({date:dateStr, checked:true, timestamp:Date.now()}); }
+      else { os.delete(dateStr); }
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function getMark(dateStr){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_MARKS,'readonly');
+      const get = tx.objectStore(STORE_MARKS).get(dateStr);
+      get.onsuccess = ()=> resolve(!!(get.result && get.result.checked));
+      get.onerror = ()=> reject(get.error);
+    });
+  }
+  function marksBetween(startDateStr, endDateStr){
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_MARKS,'readonly');
+      const idx = tx.objectStore(STORE_MARKS).index('by_date');
+      const range = IDBKeyRange.bound(startDateStr, endDateStr);
+      const set = new Set();
+      idx.openCursor(range).onsuccess = (e)=>{
+        const cur = e.target.result; if(cur){ set.add(cur.value.date); cur.continue(); } else resolve(set);
+      };
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+
+  // ===== State =====
+  let state = {
+    currentMonth: new Date(today().getFullYear(), today().getMonth(), 1),
+    selectedDate: fmtDate(today())
+  };
+
+  // ===== UI Build =====
+  const AMOUNTS = [100,150,200,250,300,350,400,450,500,600,900,1000,1500,2000];
+  function buildAmountButtons(){
+    const wrap = $('#amountButtons');
+    wrap.innerHTML = '';
+    AMOUNTS.forEach(n=>{
+      const b = document.createElement('button');
+      b.textContent = n + ' ml';
+      b.addEventListener('click', async ()=>{
+        await addEntry(state.selectedDate, n);
+        await refreshDay(state.selectedDate);
+        await refreshCalendar();
+        flashSelected();
+      });
+      wrap.appendChild(b);
+    });
+  }
+
+  function flashSelected(){
+    const cell = document.querySelector(`.cell[data-date="${state.selectedDate}"]`);
+    if(!cell) return;
+    cell.animate([{transform:'scale(1)'},{transform:'scale(1.03)'},{transform:'scale(1)'}],{duration:300});
+  }
+
+  function setMonthLabel(){
+    const y = state.currentMonth.getFullYear();
+    const m = state.currentMonth.getMonth()+1;
+    $('#monthLabel').textContent = `${y}年${m}月`;
+  }
+
+  async function refreshCalendar(){
+    const y = state.currentMonth.getFullYear();
+    const m = state.currentMonth.getMonth();
+    const first = new Date(y,m,1);
+    const start = new Date(y,m,1 - first.getDay()); // Sunday start
+    const end = new Date(y,m+1,0); // last day of month
+    const lastGridDate = new Date(end); lastGridDate.setDate(end.getDate() + (6 - end.getDay()));
+
+    const startStr = fmtDate(start), endStr = fmtDate(lastGridDate);
+    const totalsMap = await totalsBetween(startStr, endStr);
+    const markedSet = await marksBetween(startStr, endStr);
+
+    const grid = $('#calendarGrid'); grid.innerHTML = '';
+    for(let d=new Date(start); d<=lastGridDate; d.setDate(d.getDate()+1)){
+      const ds = fmtDate(d);
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (d.getMonth()!==m?' dim':'') + (sameDay(d,today())?' today':'');
+      cell.dataset.date = ds;
+      const dateEl = document.createElement('div');
+      dateEl.className = 'date';
+      dateEl.textContent = d.getDate();
+      const mlEl = document.createElement('div');
+      mlEl.className = 'ml';
+      const total = totalsMap.get(ds) || 0;
+      mlEl.textContent = total ? total + 'ml' : '';
+      const markDot = document.createElement('span'); markDot.className = 'mark-dot';
+      if(markedSet.has(ds)) cell.classList.add('marked');
+      cell.append(dateEl, mlEl, markDot);
+      cell.addEventListener('click', ()=> selectDate(ds));
+      if(ds===state.selectedDate) cell.classList.add('selected');
+      grid.appendChild(cell);
+    }
+  }
+
+  async function refreshDay(dateStr){
+    $('#todayBadge').textContent = `今日は ${fmtDate(today())}`;
+    const list = await listByDate(dateStr);
+    const container = $('#entryList'); container.innerHTML = '';
+    $('#emptyMsg').hidden = list.length!==0;
+
+    let dayTotal = 0;
+    list.sort((a,b)=>a.timestamp-b.timestamp).forEach(item=>{
+      dayTotal += item.amount;
+      const row = document.createElement('div'); row.className = 'entry';
+      const left = document.createElement('div');
+      const time = new Date(item.timestamp).toTimeString().slice(0,5);
+      left.innerHTML = `<div><strong>${item.amount} ml</strong> <span class="tag">@ ${time}</span></div>`;
+
+      const edit = document.createElement('input'); edit.type='number'; edit.min='1'; edit.step='50'; edit.value=item.amount;
+      const delBtn = document.createElement('button'); delBtn.textContent='削除'; delBtn.className='danger';
+      const saveBtn = document.createElement('button'); saveBtn.textContent='更新';
+
+      saveBtn.addEventListener('click', async ()=>{
+        const v = Number(edit.value||0); if(!v) return;
+        await updateEntry(item.id,{amount:v});
+        await refreshDay(dateStr); await refreshCalendar();
+      });
+      delBtn.addEventListener('click', async ()=>{
+        if(confirm('この記録を削除しますか？')){ await deleteEntry(item.id); await refreshDay(dateStr); await refreshCalendar(); }
+      });
+
+      const box=document.createElement('div'); box.style.display='flex'; box.style.gap='8px'; box.append(saveBtn, delBtn);
+      row.append(left, edit, box);
+      container.appendChild(row);
+    });
+
+    $('#selectedTotal').textContent = dayTotal;
+
+    const todayStr = fmtDate(today());
+    if(dateStr===todayStr) $('#todayTotal').textContent = dayTotal; else {
+      listByDate(todayStr).then(li=>{ const t = li.reduce((s,x)=>s+x.amount,0); $('#todayTotal').textContent=t; });
+    }
+
+    const med = await calcMedianRecordedUpTo30();
+    $('#median30').textContent = med;
+
+    // update checkbox state for selected day
+    const checked = await getMark(dateStr);
+    $('#markCheckbox').checked = checked;
+  }
+
+  async function calcMedianRecordedUpTo30(){
+    const map = await allTotalsByDate();
+    const dates = Array.from(map.keys()).sort();
+    if(dates.length===0) return 0;
+    const recent = dates.slice(-30);
+    const arr = recent.map(d=> map.get(d)).sort((a,b)=>a-b);
+    const mid = Math.floor(arr.length/2);
+    return arr.length%2===0 ? Math.round((arr[mid-1]+arr[mid])/2) : Math.round(arr[mid]);
+  }
+
+  function selectDate(ds){
+    state.selectedDate = ds;
+    $('#selectedDateLabel').textContent = ds;
+    $$('.cell.selected').forEach(c=>c.classList.remove('selected'));
+    const cell = document.querySelector(`.cell[data-date="${ds}"]`);
+    if(cell) cell.classList.add('selected');
+    refreshDay(ds);
+  }
+
+  // ===== Events =====
+  $('#prevMonth').addEventListener('click', ()=>{ state.currentMonth.setMonth(state.currentMonth.getMonth()-1); setMonthLabel(); refreshCalendar(); });
+  $('#nextMonth').addEventListener('click', ()=>{ state.currentMonth.setMonth(state.currentMonth.getMonth()+1); setMonthLabel(); refreshCalendar(); });
+  $('#goToday').addEventListener('click', ()=>{ state.currentMonth = new Date(today().getFullYear(), today().getMonth(), 1); setMonthLabel(); refreshCalendar(); selectDate(fmtDate(today())); });
+  $('#addCustom').addEventListener('click', async()=>{
+    const v = Number($('#customAmount').value||0); if(!v) return;
+    await addEntry(state.selectedDate, v); $('#customAmount').value='';
+    await refreshDay(state.selectedDate); await refreshCalendar(); flashSelected();
+  });
+  $('#markCheckbox').addEventListener('change', async (e)=>{
+    await setMark(state.selectedDate, e.target.checked);
+    await refreshCalendar();
+  });
+
+  // ===== Init =====
+  (async function init(){
+    await openDB();
+    buildAmountButtons();
+    setMonthLabel();
+    $('#selectedDateLabel').textContent = state.selectedDate;
+    await refreshCalendar();
+    await refreshDay(state.selectedDate);
+  })();
+})();
+</script>
+</body>
+</html>
