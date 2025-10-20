@@ -1,1 +1,7 @@
-# DrinkingWaterManagement
+[# DrinkingWaterManagement](https://uni928.github.io/DrinkingWaterManagement/)
+
+自分の飲料水の飲む量を調査するためのオンラインツールです。
+
+摂取する水分量が足りていないのでは？コーヒーを飲みすぎていない？等を心配する方は是非活用下さい。
+
+お通じチェッカーとしても利用できます。お通じに必要な水分量がそもそも足りているのか？直近のお通じのタイミングは？等を記憶して知ることができます。
